@@ -1,4 +1,7 @@
 import SwiftUI
+#if !os(macOS)
+import UIKit
+#endif
 
 public extension SFSymbol
 {
@@ -47,3 +50,17 @@ public extension Button {
         self = Button(titleKey, systemImage: symbol.name, role: role, action: action)
     }
 }
+
+#if !os(macOS)
+public extension UIImage {
+    @available(iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+    convenience init(symbol: SFSymbol, withConfiguration configuration: UIImage.Configuration? = nil) {
+        self.init(systemName: symbol.rawValue)!
+    }
+    
+    @available(iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+    convenience init(symbol: SFSymbol, compatibleWith traitCollection: UITraitCollection?) {
+        self.init(systemName: symbol.rawValue, compatibleWith: traitCollection)!
+    }
+}
+#endif
