@@ -44,3 +44,10 @@ public extension Button {
         self = Button(titleKey, systemImage: symbol.name, role: role, action: action)
     }
 }
+
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+public extension ContentUnavailableView where Label == SwiftUI.Label<Text, Image>, Description == Text?, Actions == EmptyView {
+    init(_ titleKey: LocalizedStringKey, systemImage symbol: SFSymbol, description: Text? = nil) {
+        self.init(titleKey, systemImage: symbol.name, description: description)
+    }
+}
