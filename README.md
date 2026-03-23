@@ -1,6 +1,8 @@
 # SFSymbolEnum
 
-A swift package to have SF Symbols available as enum instead of verbatim strings.
+A Swift package that exposes SF Symbols as an enum instead of verbatim strings.
+
+Build with Xcode 26 / Swift 6.2 or newer.
 
 You can write now:
 ```swift
@@ -63,25 +65,23 @@ becomes to:
 
 ## How it's done
 
-The code itself has been created with the name_availablity.plist inside the SF Symbols application and looks like this
+The generated code is created from `name_availability.plist` inside the SF Symbols application and looks like this:
 ```swift
-public enum SFSymbol:String  // this enum will be generated
-{
-    @available(iOS 13.0,macOS 10.15,tvOS 13.0,watchOS 6.0,*) case number0Circle = "0.circle"
-    @available(iOS 13.0,macOS 10.15,tvOS 13.0,watchOS 6.0,*) case number0CircleFill = "0.circle.fill"
+public enum SFSymbol: String, Sendable {
+    @available(iOS 13.0, macOS 10.15, tvOS 13.0, visionOS 1.0, watchOS 6.0, *) case number0Circle = "0.circle"
+    @available(iOS 13.0, macOS 10.15, tvOS 13.0, visionOS 1.0, watchOS 6.0, *) case number0CircleFill = "0.circle.fill"
 ...
 }
 
-extension SFSymbol:CaseIterable
-{
-    public static var allCases:[SFSymbol] {
-                var allCases:[SFSymbol] = []
-        if #available(iOS 13.0,macOS 10.15,tvOS 13.0,watchOS 6.0,*){ allCases.append(SFSymbol.number0Circle) }
-        if #available(iOS 13.0,macOS 10.15,tvOS 13.0,watchOS 6.0,*){ allCases.append(SFSymbol.number0CircleFill) }
+extension SFSymbol: CaseIterable {
+    public static let allCases: [SFSymbol] = {
+        var allCases: [SFSymbol] = []
+        if #available(iOS 13.0, macOS 10.15, tvOS 13.0, visionOS 1.0, watchOS 6.0, *) {
+            allCases.append(contentsOf: [.number0Circle, .number0CircleFill])
+        }
 ...
-    return allCases	
-    }
+        return allCases
+    }()
 }
 
 ```
-

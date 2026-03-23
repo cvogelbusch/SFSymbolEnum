@@ -1,116 +1,176 @@
 import Foundation
 
-typealias ReleaseDate = String
-typealias Symbol = String
-typealias Symbols = [Symbol:ReleaseDate]
-typealias Release = [String:String]
-typealias Releases = [ReleaseDate:Release]
-typealias SymbolTuple = (symbol:Symbol,released:ReleaseDate)
+private typealias ReleaseDate = String
+private typealias SymbolName = String
+private typealias ReleaseVersions = [String: String]
 
-extension Release {
-    var availabilty:String {
-        "available(" +
-        self.map{ (os,version) in os + " " + version }.sorted().joined(separator: ",") +
-        ",*)"
+private struct SymbolEntry {
+    let name: SymbolName
+    let releaseDate: ReleaseDate
+
+    var identifier: String {
+        var parts = name.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
+        let firstPart = parts.removeFirst()
+        var camelCase = firstPart + parts.map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined()
+
+        if camelCase.first?.isNumber == true {
+            camelCase = "number" + camelCase
+        }
+
+        if swiftKeywords.contains(camelCase) {
+            camelCase = "`\(camelCase)`"
+        }
+
+        return camelCase
     }
 }
 
-extension Symbol {
-    var replacementName:String {
-        guard !Set(["return","case","repeat"]).contains(self) else { return "`"+self+"`" }
-        let parts = components(separatedBy:".")
-        let firstElement = parts.first!
-        let camelCase = firstElement + parts.dropFirst().map{ $0.prefix(1).uppercased() + $0.dropFirst()}.joined(separator: "")
-        return camelCase.first?.isNumber == true ? "number" + camelCase : camelCase
+private enum MetadataError: Error, LocalizedError {
+    case metadataNotFound
+    case malformedMetadata
+    case missingReleaseDefinitions([ReleaseDate])
+
+    var errorDescription: String? {
+        switch self {
+        case .metadataNotFound:
+            return "Unable to locate SF Symbols metadata. Set SF_SYMBOLS_METADATA_PLIST to override the default app bundle path."
+        case .malformedMetadata:
+            return "The SF Symbols metadata plist is missing required keys."
+        case .missingReleaseDefinitions(let missingReleaseDates):
+            return "Missing release definitions for symbol release dates: \(missingReleaseDates.joined(separator: ", "))"
+        }
     }
 }
 
+private let preferredPlatformOrder = ["iOS", "macOS", "tvOS", "visionOS", "watchOS"]
+private let swiftKeywords: Set<String> = [
+    "Any", "Self", "actor", "as", "associatedtype", "async", "await", "borrowing",
+    "break", "case", "catch", "class", "consume", "consuming", "continue", "copy",
+    "default", "defer", "deinit", "distributed", "do", "each", "else", "enum",
+    "extension", "false", "fileprivate", "for", "func", "guard", "if", "import", "in",
+    "init", "inout", "internal", "is", "isolated", "let", "macro", "nil",
+    "nonisolated", "open", "operator", "package", "precedencegroup", "private",
+    "protocol", "public", "repeat", "rethrows", "return", "self", "sending", "some",
+    "static", "struct", "subscript", "super", "switch", "throw", "throws", "true",
+    "try", "typealias", "var", "where", "while"
+]
 
-let plistURL: URL = {
-    let betaURL = URL(fileURLWithPath: "/Applications/SF Symbols beta.app/Contents/Resources/Metadata/name_availability.plist")
-    let oldURL = URL(fileURLWithPath:"/Applications/SF Symbols.app/Contents/Resources/Metadata-Public/name_availability.plist")
-    let newURL = URL(fileURLWithPath:"/Applications/SF Symbols.app/Contents/Resources/Metadata/name_availability.plist")
-    if FileManager.default.fileExists(atPath: betaURL.path) {
-        return betaURL
-    } else if FileManager.default.fileExists(atPath: oldURL.path) {
-        return oldURL
-    } else {
-        return newURL
-    }
-}()
-let (sortedSymbolTuple,releaseYears) = readSymbolsAndYears(from:plistURL)
-
-print("""
+private let outputHeader = """
 // this file has been generated
 // you can recreate it using generateSFSymbolEnum.swift script
-import Foundation
 
-public enum SFSymbol:String
-{
-""")
+public enum SFSymbol: String, Sendable {
+"""
 
-for symbolTuple in sortedSymbolTuple
-{
-    print("    @" + releaseYears[symbolTuple.released]!.availabilty + " case " + symbolTuple.symbol.replacementName + " = \"" + symbolTuple.symbol + "\"" )
+private func metadataURL() throws -> URL {
+    let environment = ProcessInfo.processInfo.environment
+    let candidates = [
+        environment["SF_SYMBOLS_METADATA_PLIST"].map(URL.init(fileURLWithPath:)),
+        URL(fileURLWithPath: "/Applications/SF Symbols beta.app/Contents/Resources/Metadata/name_availability.plist"),
+        URL(fileURLWithPath: "/Applications/SF Symbols.app/Contents/Resources/Metadata/name_availability.plist"),
+        URL(fileURLWithPath: "/Applications/SF Symbols.app/Contents/Resources/Metadata-Public/name_availability.plist")
+    ].compactMap { $0 }
+
+    guard let url = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }) else {
+        throw MetadataError.metadataNotFound
+    }
+
+    return url
 }
-print("""
-}
-extension SFSymbol:CaseIterable
-{
-    public static let allCases:[SFSymbol] = {
-                var allCases:[SFSymbol] = []
-""")
 
-var lastavailablity = ""
-for symbolTuple in sortedSymbolTuple
-{
-    if symbolTuple.released != lastavailablity
-    {
-        if lastavailablity != ""
-        {
-            print("\n            ])\n        }\n")
+private func releaseAvailability(from versions: ReleaseVersions) -> String {
+    let orderedPlatforms = preferredPlatformOrder.filter { versions[$0] != nil }
+    let remainingPlatforms = versions.keys
+        .filter { !preferredPlatformOrder.contains($0) }
+        .sorted()
+    let allPlatforms = orderedPlatforms + remainingPlatforms
+
+    let requirements = allPlatforms.compactMap { platform in
+        versions[platform].map { "\(platform) \($0)" }
+    }
+
+    return "available(" + requirements.joined(separator: ", ") + ", *)"
+}
+
+private func readMetadata(from fileURL: URL) throws -> ([SymbolEntry], [ReleaseDate: ReleaseVersions]) {
+    let data = try Data(contentsOf: fileURL, options: .mappedIfSafe)
+    let propertyList = try PropertyListSerialization.propertyList(from: data, format: nil)
+
+    guard
+        let metadata = propertyList as? [String: Any],
+        let symbols = metadata["symbols"] as? [SymbolName: ReleaseDate],
+        let releases = metadata["year_to_release"] as? [ReleaseDate: ReleaseVersions]
+    else {
+        throw MetadataError.malformedMetadata
+    }
+
+    let missingReleaseDates = Array(Set(symbols.values).subtracting(releases.keys)).sorted()
+    guard missingReleaseDates.isEmpty else {
+        throw MetadataError.missingReleaseDefinitions(missingReleaseDates)
+    }
+
+    let unsortedEntries: [SymbolEntry] = symbols.map { key, value in
+        SymbolEntry(name: key, releaseDate: value)
+    }
+    let entries = unsortedEntries.sorted { lhs, rhs in
+        lhs.releaseDate == rhs.releaseDate ? lhs.name < rhs.name : lhs.releaseDate < rhs.releaseDate
+    }
+
+    return (entries, releases)
+}
+
+private func generatedSource(entries: [SymbolEntry], releases: [ReleaseDate: ReleaseVersions]) -> String {
+    var lines = [outputHeader]
+
+    for entry in entries {
+        let availability = releaseAvailability(from: releases[entry.releaseDate]!)
+        lines.append("    @\(availability) case \(entry.identifier) = \"\(entry.name)\"")
+    }
+
+    lines.append("}")
+    lines.append("")
+    lines.append("extension SFSymbol: CaseIterable {")
+    lines.append("    public static let allCases: [SFSymbol] = {")
+    lines.append("        var allCases: [SFSymbol] = []")
+
+    var currentReleaseDate: ReleaseDate?
+    for entry in entries {
+        if entry.releaseDate != currentReleaseDate {
+            if currentReleaseDate != nil {
+                lines.append("            ])")
+                lines.append("        }")
+                lines.append("")
+            }
+
+            let availability = releaseAvailability(from: releases[entry.releaseDate]!)
+            lines.append("        if #\(availability) {")
+            lines.append("            allCases.append(contentsOf: [")
+            lines.append("                .\(entry.identifier)")
+            currentReleaseDate = entry.releaseDate
+        } else {
+            lines[lines.endIndex - 1] += ","
+            lines.append("                .\(entry.identifier)")
         }
-        lastavailablity = symbolTuple.released
-        print("        if #" + releaseYears[symbolTuple.released]!.availabilty + "{")
-        print("            allCases.append(contentsOf: [")
-        print("                SFSymbol." + symbolTuple.symbol.replacementName , terminator:"")
     }
-    else
-    {
-        print(",\n                SFSymbol." + symbolTuple.symbol.replacementName, terminator:"")
+
+    if currentReleaseDate != nil {
+        lines.append("            ])")
+        lines.append("        }")
     }
+
+    lines.append("")
+    lines.append("        return allCases")
+    lines.append("    }()")
+    lines.append("}")
+
+    return lines.joined(separator: "\n")
 }
 
-print("""
-
-        ])
-    }
-    
-    return allCases
-    }()
-}
-""")
-
-exit(1)
-
-
-
-func readSymbolsAndYears(from fileURL:URL) -> ( [SymbolTuple],Releases)
-{
-    let data = try! Data.init(contentsOf: fileURL, options: .mappedIfSafe)
-    let propertyList = try! PropertyListSerialization.propertyList(from:data,options:[],format:nil) as! Dictionary<String,Any>
-
-    let symbols     = propertyList["symbols"] as! Symbols
-    let releases    = propertyList["year_to_release"] as! Releases
-
-    let releaseDatesFromSymbols     = Set<ReleaseDate>(symbols.values)
-    let releaseDatesFromReleases    = Set<ReleaseDate>(releases.keys)
-
-    assert(releaseDatesFromReleases.isSubset(of:releaseDatesFromSymbols),"There are symbols with relasedates that have no release versions \(releaseDatesFromReleases) < \(releaseDatesFromSymbols)")
-
-    let sortedSymbolTuple = symbols
-                            .sorted{ $0.value == $1.value ? $0.key < $1.key : $0.value < $1.value}
-                            .map{ SymbolTuple(symbol:$0.key,released:$0.value) }
-
-    return (sortedSymbolTuple,releases)
+do {
+    let url = try metadataURL()
+    let (entries, releases) = try readMetadata(from: url)
+    print(generatedSource(entries: entries, releases: releases))
+} catch {
+    fputs("error: \(error.localizedDescription)\n", stderr)
+    exit(1)
 }
