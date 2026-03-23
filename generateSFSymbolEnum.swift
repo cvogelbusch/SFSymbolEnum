@@ -8,10 +8,10 @@ private struct SymbolEntry {
     let name: SymbolName
     let releaseDate: ReleaseDate
 
-    var identifier: String {
-        var parts = name.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
-        let firstPart = parts.removeFirst()
-        var camelCase = firstPart + parts.map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined()
+    var swiftIdentifier: String {
+        let parts = name.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
+        let firstPart = parts.first ?? ""
+        var camelCase = firstPart + parts.dropFirst().map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined()
 
         if camelCase.first?.isNumber == true {
             camelCase = "number" + camelCase
@@ -22,6 +22,12 @@ private struct SymbolEntry {
         }
 
         return camelCase
+    }
+
+    var objcEnumName: String {
+        let parts = name.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
+        let pascalCase = parts.map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined()
+        return "SFSymbol" + pascalCase
     }
 }
 
@@ -42,6 +48,12 @@ private enum MetadataError: Error, LocalizedError {
     }
 }
 
+private enum OutputMode {
+    case swift
+    case objectiveCHeader
+    case objectiveCImplementation
+}
+
 private let preferredPlatformOrder = ["iOS", "macOS", "tvOS", "visionOS", "watchOS"]
 private let swiftKeywords: Set<String> = [
     "Any", "Self", "actor", "as", "associatedtype", "async", "await", "borrowing",
@@ -55,12 +67,17 @@ private let swiftKeywords: Set<String> = [
     "try", "typealias", "var", "where", "while"
 ]
 
-private let outputHeader = """
-// this file has been generated
-// you can recreate it using generateSFSymbolEnum.swift script
+private func parseOutputMode(arguments: [String]) -> OutputMode {
+    if arguments.contains("--objc-impl") {
+        return .objectiveCImplementation
+    }
 
-public enum SFSymbol: String, Sendable {
-"""
+    if arguments.contains("--objc") {
+        return .objectiveCHeader
+    }
+
+    return .swift
+}
 
 private func metadataURL() throws -> URL {
     let environment = ProcessInfo.processInfo.environment
@@ -92,6 +109,20 @@ private func releaseAvailability(from versions: ReleaseVersions) -> String {
     return "available(" + requirements.joined(separator: ", ") + ", *)"
 }
 
+private func objcAvailability(from versions: ReleaseVersions) -> String {
+    let orderedPlatforms = preferredPlatformOrder.filter { versions[$0] != nil }
+    let remainingPlatforms = versions.keys
+        .filter { !preferredPlatformOrder.contains($0) }
+        .sorted()
+    let allPlatforms = orderedPlatforms + remainingPlatforms
+
+    let requirements = allPlatforms.compactMap { platform in
+        versions[platform].map { "\(platform.lowercased())(\($0))" }
+    }
+
+    return "API_AVAILABLE(" + requirements.joined(separator: ", ") + ")"
+}
+
 private func readMetadata(from fileURL: URL) throws -> ([SymbolEntry], [ReleaseDate: ReleaseVersions]) {
     let data = try Data(contentsOf: fileURL, options: .mappedIfSafe)
     let propertyList = try PropertyListSerialization.propertyList(from: data, format: nil)
@@ -119,12 +150,17 @@ private func readMetadata(from fileURL: URL) throws -> ([SymbolEntry], [ReleaseD
     return (entries, releases)
 }
 
-private func generatedSource(entries: [SymbolEntry], releases: [ReleaseDate: ReleaseVersions]) -> String {
-    var lines = [outputHeader]
+private func generateSwiftSource(entries: [SymbolEntry], releases: [ReleaseDate: ReleaseVersions]) -> String {
+    var lines = [
+        "// this file has been generated",
+        "// you can recreate it using generateSFSymbolEnum.swift script",
+        "",
+        "public enum SFSymbol: String, Sendable {"
+    ]
 
     for entry in entries {
         let availability = releaseAvailability(from: releases[entry.releaseDate]!)
-        lines.append("    @\(availability) case \(entry.identifier) = \"\(entry.name)\"")
+        lines.append("    @\(availability) case \(entry.swiftIdentifier) = \"\(entry.name)\"")
     }
 
     lines.append("}")
@@ -145,11 +181,11 @@ private func generatedSource(entries: [SymbolEntry], releases: [ReleaseDate: Rel
             let availability = releaseAvailability(from: releases[entry.releaseDate]!)
             lines.append("        if #\(availability) {")
             lines.append("            allCases.append(contentsOf: [")
-            lines.append("                .\(entry.identifier)")
+            lines.append("                .\(entry.swiftIdentifier)")
             currentReleaseDate = entry.releaseDate
         } else {
             lines[lines.endIndex - 1] += ","
-            lines.append("                .\(entry.identifier)")
+            lines.append("                .\(entry.swiftIdentifier)")
         }
     }
 
@@ -166,10 +202,128 @@ private func generatedSource(entries: [SymbolEntry], releases: [ReleaseDate: Rel
     return lines.joined(separator: "\n")
 }
 
+private func generateObjectiveCHeader(entries: [SymbolEntry], releases: [ReleaseDate: ReleaseVersions]) -> String {
+    var lines = [
+        "// This file has been generated",
+        "// You can recreate it using generateSFSymbolEnum.swift script with --objc flag",
+        "//",
+        "// DO NOT EDIT - This file is automatically generated",
+        "",
+        "#import <Availability.h>",
+        "#import <Foundation/Foundation.h>",
+        "",
+        "NS_ASSUME_NONNULL_BEGIN",
+        "",
+        "typedef NS_ENUM(NSInteger, SFSymbol) {"
+    ]
+
+    let grouped = Dictionary(grouping: entries, by: \.releaseDate)
+    let releaseDates = grouped.keys.sorted()
+
+    var enumValue = 0
+    for (releaseIndex, releaseDate) in releaseDates.enumerated() {
+        guard let release = releases[releaseDate], let symbols = grouped[releaseDate] else { continue }
+
+        if releaseIndex > 0 {
+            lines.append("")
+        }
+
+        lines.append("    // Symbols introduced in \(releaseDate)")
+        for (symbolIndex, entry) in symbols.enumerated() {
+            let isLast = releaseIndex == releaseDates.count - 1 && symbolIndex == symbols.count - 1
+            let comma = isLast ? "" : ","
+            lines.append("    \(entry.objcEnumName) \(objcAvailability(from: release)) = \(enumValue)\(comma)")
+            enumValue += 1
+        }
+    }
+
+    lines.append("};")
+    lines.append("")
+    lines.append("NSString * _Nullable SFSymbolGetString(SFSymbol symbol);")
+    lines.append("BOOL SFSymbolIsAvailable(SFSymbol symbol);")
+    lines.append("")
+    lines.append("NS_ASSUME_NONNULL_END")
+
+    return lines.joined(separator: "\n")
+}
+
+private func availableString(from versions: ReleaseVersions) -> String {
+    let orderedPlatforms = preferredPlatformOrder.filter { versions[$0] != nil }
+    let remainingPlatforms = versions.keys
+        .filter { !preferredPlatformOrder.contains($0) }
+        .sorted()
+    let allPlatforms = orderedPlatforms + remainingPlatforms
+
+    return allPlatforms.compactMap { platform in
+        versions[platform].map { "\(platform) \($0)" }
+    }.joined(separator: ", ")
+}
+
+private func generateObjectiveCImplementation(entries: [SymbolEntry], releases: [ReleaseDate: ReleaseVersions]) -> String {
+    var lines = [
+        "// This file has been generated",
+        "// You can recreate it using generateSFSymbolEnum.swift script with --objc-impl flag",
+        "//",
+        "// DO NOT EDIT - This file is automatically generated",
+        "",
+        "#import \"SFSymbolEnum.h\"",
+        "",
+        "NSString * _Nullable SFSymbolGetString(SFSymbol symbol) {",
+        "    switch (symbol) {"
+    ]
+
+    for entry in entries {
+        lines.append("        case \(entry.objcEnumName): return @\"\(entry.name)\";")
+    }
+
+    lines.append("        default: return nil;")
+    lines.append("    }")
+    lines.append("}")
+    lines.append("")
+    lines.append("BOOL SFSymbolIsAvailable(SFSymbol symbol) {")
+
+    let grouped = Dictionary(grouping: entries, by: \.releaseDate)
+    let ascendingReleaseDates = grouped.keys.sorted()
+    var rangesByReleaseDate = [ReleaseDate: ClosedRange<Int>]()
+    var nextEnumValue = 0
+    for releaseDate in ascendingReleaseDates {
+        guard let symbols = grouped[releaseDate] else { continue }
+        let firstValue = nextEnumValue
+        let lastValue = nextEnumValue + symbols.count - 1
+        rangesByReleaseDate[releaseDate] = firstValue...lastValue
+        nextEnumValue += symbols.count
+    }
+
+    let descendingReleaseDates = ascendingReleaseDates.sorted(by: >)
+    for (index, releaseDate) in descendingReleaseDates.enumerated() {
+        guard let release = releases[releaseDate] else { continue }
+        guard let range = rangesByReleaseDate[releaseDate] else { continue }
+        let clause = index == 0 ? "if" : "} else if"
+        lines.append("    \(clause) (@available(\(availableString(from: release)), *)) {")
+        lines.append("        return (symbol >= \(range.lowerBound) && symbol <= \(range.upperBound));")
+    }
+
+    lines.append("    } else {")
+    lines.append("        return NO;")
+    lines.append("    }")
+    lines.append("}")
+
+    return lines.joined(separator: "\n")
+}
+
 do {
+    let mode = parseOutputMode(arguments: CommandLine.arguments)
     let url = try metadataURL()
     let (entries, releases) = try readMetadata(from: url)
-    print(generatedSource(entries: entries, releases: releases))
+
+    switch mode {
+    case .swift:
+        print(generateSwiftSource(entries: entries, releases: releases))
+    case .objectiveCHeader:
+        print(generateObjectiveCHeader(entries: entries, releases: releases))
+    case .objectiveCImplementation:
+        print(generateObjectiveCImplementation(entries: entries, releases: releases))
+    }
 } catch {
     fputs("error: \(error.localizedDescription)\n", stderr)
     exit(1)
