@@ -1,0 +1,53 @@
+name: Create GitHub Release
+
+on:
+  push:
+    tags:
+      - "*.*.*"
+      - "*.*.*-*"
+      - "v*.*.*"
+      - "v*.*.*-*"
+      - "beta"
+      - "development"
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Prepare release metadata
+        id: release
+        run: |
+          set -euo pipefail
+
+          prerelease=false
+          case "${GITHUB_REF_NAME}" in
+            development|*alpha*|*beta*|*gamma*) prerelease=true ;;
+          esac
+
+          echo "prerelease=${prerelease}" >> "$GITHUB_OUTPUT"
+
+      - name: Create release notes
+        run: |
+          set -euo pipefail
+
+          {
+            echo "Release tag: ${GITHUB_REF_NAME}"
+            echo "Commit: ${GITHUB_SHA}"
+          } > RELEASE.txt
+
+      - name: Create or update GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ steps.release.outputs.prerelease == 'true' }}
+          body_path: RELEASE.txt
+          generate_release_notes: true
+          append_body: true
+          overwrite_files: true
+          files: |
+            RELEASE.txt
