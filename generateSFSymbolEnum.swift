@@ -155,12 +155,13 @@ private func generateSwiftSource(entries: [SymbolEntry], releases: [ReleaseDate:
         "// this file has been generated",
         "// you can recreate it using generateSFSymbolEnum.swift script",
         "",
-        "public enum SFSymbol: String, Sendable {"
+        "public struct SFSymbol: Sendable {",
+        "    public let rawValue: String"
     ]
 
     for entry in entries {
         let availability = releaseAvailability(from: releases[entry.releaseDate]!)
-        lines.append("    @\(availability) case \(entry.swiftIdentifier) = \"\(entry.name)\"")
+        lines.append("    @\(availability) public static let \(entry.swiftIdentifier) = SFSymbol(rawValue: \"\(entry.name)\")")
     }
 
     lines.append("}")
