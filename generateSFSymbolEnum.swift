@@ -156,7 +156,7 @@ private func generateSwiftSource(entries: [SymbolEntry], releases: [ReleaseDate:
         "// you can recreate it using generateSFSymbolEnum.swift script",
         "",
         "public struct SFSymbol: Sendable {",
-        "    public let rawValue: String"
+        "    let rawValue: String"
     ]
 
     for entry in entries {
