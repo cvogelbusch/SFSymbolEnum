@@ -157,7 +157,6 @@ private func readMetadata(from fileURL: URL) throws -> ([SymbolEntry], [ReleaseD
 }
 
 private func generateSwiftSource(entries: [SymbolEntry], releases: [ReleaseDate: ReleaseVersions]) -> String {
-    #if TRUE // struct with rawValue compiles faster, returning to enum when Swift bug is fixed
     var lines = [
         "// this file has been generated",
         "// you can recreate it using generateSFSymbolEnum.swift script",
@@ -175,24 +174,23 @@ private func generateSwiftSource(entries: [SymbolEntry], releases: [ReleaseDate:
     lines.append("")
     
     return lines.joined(separator: "\n")
-    #else
-    var lines = [
-        "// this file has been generated",
-        "// you can recreate it using generateSFSymbolEnum.swift script",
-        "",
-        "public enum SFSymbol: String, Sendable {"
-    ]
-
-    for entry in entries {
-        let availability = releaseAvailability(from: releases[entry.releaseDate]!)
-        lines.append("    @\(availability) case \(entry.swiftIdentifier) = \"\(entry.name)\"")
-    }
-
-    lines.append("}")
-    lines.append("")
-    
-    return lines.joined(separator: "\n")
-    #endif
+// struct with rawValue compiles faster, returning to enum when Swift bug is fixed
+//    var lines = [
+//        "// this file has been generated",
+//        "// you can recreate it using generateSFSymbolEnum.swift script",
+//        "",
+//        "public enum SFSymbol: String, Sendable {"
+//    ]
+//
+//    for entry in entries {
+//        let availability = releaseAvailability(from: releases[entry.releaseDate]!)
+//        lines.append("    @\(availability) case \(entry.swiftIdentifier) = \"\(entry.name)\"")
+//    }
+//
+//    lines.append("}")
+//    lines.append("")
+//    
+//    return lines.joined(separator: "\n")
 }
 
 
