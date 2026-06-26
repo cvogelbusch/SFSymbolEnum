@@ -163,7 +163,11 @@ private func generateSwiftSource(entries: [SymbolEntry], releases: [ReleaseDate:
         "",
         "public struct SFSymbol: Sendable, Hashable {",
         "    public let rawValue: String",
-        "    public init(rawValue: String) { self.rawValue = rawValue }"
+        "    public func named(_ named: String) -> SFSymbol? {",
+        "        if SFSymbol.allCases.contains(where: { $0.rawValue == rawValue}) {",
+        "            return SFSymbol(rawValue: rawValue)",
+        "        } else { return nil }",
+        "    }"
     ]
 
     for entry in entries {

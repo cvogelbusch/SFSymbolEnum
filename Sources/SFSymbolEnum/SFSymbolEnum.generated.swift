@@ -3,7 +3,11 @@
 
 public struct SFSymbol: Sendable, Hashable {
     public let rawValue: String
-    public init(rawValue: String) { self.rawValue = rawValue }
+    public func named(_ named: String) -> SFSymbol? {
+        if SFSymbol.allCases.contains(where: { $0.rawValue == rawValue}) {
+            return SFSymbol(rawValue: rawValue)
+        } else { return nil }
+    }
     @available(iOS 13.0, macOS 10.15, tvOS 13.0, visionOS 1.0, watchOS 6.0, *) public static let number0Circle = SFSymbol(rawValue: "0.circle")
     @available(iOS 13.0, macOS 10.15, tvOS 13.0, visionOS 1.0, watchOS 6.0, *) public static let number0CircleFill = SFSymbol(rawValue: "0.circle.fill")
     @available(iOS 13.0, macOS 10.15, tvOS 13.0, visionOS 1.0, watchOS 6.0, *) public static let number0Square = SFSymbol(rawValue: "0.square")
