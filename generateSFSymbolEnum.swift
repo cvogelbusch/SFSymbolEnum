@@ -50,6 +50,7 @@ private enum MetadataError: Error, LocalizedError {
 
 private enum OutputMode {
     case swift
+    case swiftExtension
     case objectiveCHeader
     case objectiveCImplementation
 }
@@ -68,6 +69,11 @@ private let swiftKeywords: Set<String> = [
 ]
 
 private func parseOutputMode(arguments: [String]) -> OutputMode {
+    if arguments.contains("--extension") {
+        return .swiftExtension
+    }
+
+
     if arguments.contains("--objc-impl") {
         return .objectiveCImplementation
     }
@@ -151,6 +157,7 @@ private func readMetadata(from fileURL: URL) throws -> ([SymbolEntry], [ReleaseD
 }
 
 private func generateSwiftSource(entries: [SymbolEntry], releases: [ReleaseDate: ReleaseVersions]) -> String {
+    #if TRUE // struct with rawValue compiles faster, returning to enum when Swift bug is fixed
     var lines = [
         "// this file has been generated",
         "// you can recreate it using generateSFSymbolEnum.swift script",
@@ -166,9 +173,39 @@ private func generateSwiftSource(entries: [SymbolEntry], releases: [ReleaseDate:
 
     lines.append("}")
     lines.append("")
-    lines.append("extension SFSymbol: CaseIterable {")
-    lines.append("    public static let allCases: [SFSymbol] = {")
-    lines.append("        var allCases: [SFSymbol] = []")
+    
+    return lines.joined(separator: "\n")
+    #else
+    var lines = [
+        "// this file has been generated",
+        "// you can recreate it using generateSFSymbolEnum.swift script",
+        "",
+        "public enum SFSymbol: String, Sendable {"
+    ]
+
+    for entry in entries {
+        let availability = releaseAvailability(from: releases[entry.releaseDate]!)
+        lines.append("    @\(availability) case \(entry.swiftIdentifier) = \"\(entry.name)\"")
+    }
+
+    lines.append("}")
+    lines.append("")
+    
+    return lines.joined(separator: "\n")
+    #endif
+}
+
+
+private func generateSwiftExtensionSource(entries: [SymbolEntry], releases: [ReleaseDate: ReleaseVersions]) -> String {
+    var lines = [
+        "// this file has been generated",
+        "// you can recreate it using generateSFSymbolEnum.swift script",
+        "",
+        "extension SFSymbol: CaseIterable {",
+        "    public static let allCases: [SFSymbol] = {",
+        "        var allCases: [SFSymbol] = []"
+    ]
+
 
     var currentReleaseDate: ReleaseDate?
     for entry in entries {
@@ -182,11 +219,11 @@ private func generateSwiftSource(entries: [SymbolEntry], releases: [ReleaseDate:
             let availability = releaseAvailability(from: releases[entry.releaseDate]!)
             lines.append("        if #\(availability) {")
             lines.append("            allCases.append(contentsOf: [")
-            lines.append("                .\(entry.swiftIdentifier)")
+            lines.append("                SFSymbol.\(entry.swiftIdentifier)")
             currentReleaseDate = entry.releaseDate
         } else {
             lines[lines.endIndex - 1] += ","
-            lines.append("                .\(entry.swiftIdentifier)")
+            lines.append("                SFSymbol.\(entry.swiftIdentifier)")
         }
     }
 
@@ -320,6 +357,8 @@ do {
     switch mode {
     case .swift:
         print(generateSwiftSource(entries: entries, releases: releases))
+    case .swiftExtension:
+        print(generateSwiftExtensionSource(entries: entries, releases: releases))
     case .objectiveCHeader:
         print(generateObjectiveCHeader(entries: entries, releases: releases))
     case .objectiveCImplementation:
