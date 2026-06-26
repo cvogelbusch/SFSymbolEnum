@@ -2,6 +2,12 @@ import SwiftUI
 
 public extension SFSymbol {
     var name: String { rawValue }
+    
+    static func named(_ name: String) -> SFSymbol? {
+        if SFSymbol.allCases.contains(where: { $0.rawValue == name}) {
+            return SFSymbol(rawValue: name)
+        } else { return nil }
+    }
 
     @available(iOS 13.0, macOS 11.0, tvOS 13.0, visionOS 1.0, watchOS 6.0, *)
     var image: Image { Image(systemName: rawValue) }
