@@ -6,8 +6,8 @@ Build with Xcode 26 / Swift 6.2 or newer.
 
 You can write now:
 ```swift
-Image(systemImage:.person)
-Label("Text",systemImage:.zlRectangleRoundedtopFill)
+Image(systemName:.person)
+Label("Text",symbol:.zlRectangleRoundedtopFill)
 ```
 
 Or to see a list of all available symbols
