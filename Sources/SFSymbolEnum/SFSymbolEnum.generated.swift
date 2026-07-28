@@ -9189,4 +9189,3 @@ public struct SFSymbol: Sendable, Hashable, Identifiable {
     @available(iOS 26.1, macOS 26.1, tvOS 26.1, visionOS 26.1, watchOS 26.1, *) public static let starRectangle = SFSymbol(rawValue: "star.rectangle")
     @available(iOS 26.1, macOS 26.1, tvOS 26.1, visionOS 26.1, watchOS 26.1, *) public static let starRectangleFill = SFSymbol(rawValue: "star.rectangle.fill")
 }
-

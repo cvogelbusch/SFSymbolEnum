@@ -1,10 +1,20 @@
 import XCTest
 import SFSymbolEnum
+import SFSymbolEnumIteratable
 import SwiftUI
 
 final class SFSymbolEnumTests: XCTestCase {
     func testSymbolNameMatchesRawValue() {
         XCTAssertEqual(SFSymbol.person.name, "person")
+    }
+
+    func testIteratableTargetAddsAllCases() {
+        XCTAssertTrue(SFSymbol.allCases.contains(.person))
+    }
+
+    func testIteratableTargetAddsNameLookup() {
+        XCTAssertEqual(SFSymbol.named("person"), .person)
+        XCTAssertNil(SFSymbol.named("not.a.symbol"))
     }
 
     @available(iOS 13.0, macOS 11.0, tvOS 13.0, visionOS 1.0, watchOS 6.0, *)

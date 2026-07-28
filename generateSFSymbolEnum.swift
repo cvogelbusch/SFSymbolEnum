@@ -51,11 +51,14 @@ private enum MetadataError: Error, LocalizedError {
 private enum OutputMode {
     case swift
     case swiftExtension
+    case packageSources
     case objectiveCHeader
     case objectiveCImplementation
 }
 
 private let preferredPlatformOrder = ["iOS", "macOS", "tvOS", "visionOS", "watchOS"]
+private let swiftSourceURL = URL(fileURLWithPath: "Sources/SFSymbolEnum/SFSymbolEnum.generated.swift")
+private let swiftIterableSourceURL = URL(fileURLWithPath: "Sources/SFSymbolEnumIteratable/SFSymbolEnumIteratable.generated.swift")
 private let swiftKeywords: Set<String> = [
     "Any", "Self", "actor", "as", "associatedtype", "async", "await", "borrowing",
     "break", "case", "catch", "class", "consume", "consuming", "continue", "copy",
@@ -69,7 +72,11 @@ private let swiftKeywords: Set<String> = [
 ]
 
 private func parseOutputMode(arguments: [String]) -> OutputMode {
-    if arguments.contains("--extension") {
+    if arguments.contains("--write-package-sources") {
+        return .packageSources
+    }
+
+    if arguments.contains("--extension") || arguments.contains("--caseiterable") || arguments.contains("--iteratable") {
         return .swiftExtension
     }
 
@@ -198,7 +205,9 @@ private func generateSwiftSource(entries: [SymbolEntry], releases: [ReleaseDate:
 private func generateSwiftExtensionSource(entries: [SymbolEntry], releases: [ReleaseDate: ReleaseVersions]) -> String {
     var lines = [
         "// this file has been generated",
-        "// you can recreate it using generateSFSymbolEnum.swift script",
+        "// you can recreate it using generateSFSymbolEnum.swift script --iteratable",
+        "",
+        "import SFSymbolEnum",
         "",
         "extension SFSymbol: CaseIterable {",
         "    public static let allCases: [SFSymbol] = {",
@@ -237,6 +246,25 @@ private func generateSwiftExtensionSource(entries: [SymbolEntry], releases: [Rel
     lines.append("}")
 
     return lines.joined(separator: "\n")
+}
+
+private func writeSource(_ source: String, to url: URL) throws {
+    try FileManager.default.createDirectory(
+        at: url.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+    )
+    try source.write(to: url, atomically: true, encoding: .utf8)
+}
+
+private func writePackageSources(entries: [SymbolEntry], releases: [ReleaseDate: ReleaseVersions]) throws {
+    try writeSource(
+        generateSwiftSource(entries: entries, releases: releases),
+        to: swiftSourceURL
+    )
+    try writeSource(
+        generateSwiftExtensionSource(entries: entries, releases: releases),
+        to: swiftIterableSourceURL
+    )
 }
 
 private func generateObjectiveCHeader(entries: [SymbolEntry], releases: [ReleaseDate: ReleaseVersions]) -> String {
@@ -358,6 +386,8 @@ do {
         print(generateSwiftSource(entries: entries, releases: releases))
     case .swiftExtension:
         print(generateSwiftExtensionSource(entries: entries, releases: releases))
+    case .packageSources:
+        try writePackageSources(entries: entries, releases: releases)
     case .objectiveCHeader:
         print(generateObjectiveCHeader(entries: entries, releases: releases))
     case .objectiveCImplementation:

@@ -2,12 +2,6 @@ import SwiftUI
 
 public extension SFSymbol {
     var name: String { rawValue }
-    
-    static func named(_ name: String) -> SFSymbol? {
-        if SFSymbol.allCases.contains(where: { $0.rawValue == name}) {
-            return SFSymbol(rawValue: name)
-        } else { return nil }
-    }
 
     @available(iOS 13.0, macOS 11.0, tvOS 13.0, visionOS 1.0, watchOS 6.0, *)
     var image: Image { Image(systemName: rawValue) }
@@ -28,10 +22,6 @@ public extension Image {
 
 @available(iOS 14.0, macOS 11.0, tvOS 14.0, visionOS 1.0, watchOS 7.0, *)
 public extension Label {
-    init(_ title: LocalizedStringKey, systemImage symbol: SFSymbol) where Title == Text, Icon == Image {
-        self = Label(title, systemImage: symbol.name)
-    }
-
     init(_ title: LocalizedStringKey, symbol: SFSymbol) where Title == Text, Icon == Image {
         self = Label(title, systemImage: symbol.name)
     }
@@ -53,7 +43,7 @@ public extension Button {
 
 @available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
 public extension ContentUnavailableView where Label == SwiftUI.Label<Text, Image>, Description == Text?, Actions == EmptyView {
-    init(_ titleKey: LocalizedStringKey, systemImage symbol: SFSymbol, description: Text? = nil) {
+    init(_ titleKey: LocalizedStringKey, symbol: SFSymbol, description: Text? = nil) {
         self.init(titleKey, systemImage: symbol.name, description: description)
     }
 }

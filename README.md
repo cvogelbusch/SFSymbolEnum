@@ -12,6 +12,9 @@ Label("Text",systemImage:.zlRectangleRoundedtopFill)
 
 Or to see a list of all available symbols
 ```swift
+import SFSymbolEnum
+import SFSymbolEnumIteratable
+
 struct SwiftUIView: View {
     var body: some View {
         VStack {
@@ -39,9 +42,13 @@ struct SwiftUIView: View {
 ## Installation
 
 - Add the package to your project: Xcode->Add Package Dependency add this url: https://github.com/jollyjinx/SFSymbolEnum
-- Import in files like this:
+- Import the base target in files like this:
 ```swift 
      import SFSymbolEnum
+```
+- To use `SFSymbol.allCases`, also add and import the `SFSymbolEnumIteratable` target:
+```swift
+     import SFSymbolEnumIteratable
 ```
 
 
@@ -72,6 +79,8 @@ public enum SFSymbol: String, Sendable {
     @available(iOS 13.0, macOS 10.15, tvOS 13.0, visionOS 1.0, watchOS 6.0, *) case number0CircleFill = "0.circle.fill"
 ...
 }
+
+import SFSymbolEnum
 
 extension SFSymbol: CaseIterable {
     public static let allCases: [SFSymbol] = {

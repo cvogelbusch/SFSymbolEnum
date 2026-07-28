@@ -11,13 +11,21 @@ let package = Package(
         .watchOS(.v6)
     ],
     products: [
-        .library(name: "SFSymbolEnum", targets: ["SFSymbolEnum"])
+        .library(name: "SFSymbolEnum", targets: ["SFSymbolEnum"]),
+        .library(name: "SFSymbolEnumIteratable", targets: ["SFSymbolEnumIteratable"])
     ],
     targets: [
         .target(name: "SFSymbolEnum"),
+        .target(
+            name: "SFSymbolEnumIteratable",
+            dependencies: ["SFSymbolEnum"]
+        ),
         .testTarget(
             name: "SFSymbolEnumTests",
-            dependencies: ["SFSymbolEnum"]
+            dependencies: [
+                "SFSymbolEnum",
+                "SFSymbolEnumIteratable"
+            ]
         )
     ]
 )

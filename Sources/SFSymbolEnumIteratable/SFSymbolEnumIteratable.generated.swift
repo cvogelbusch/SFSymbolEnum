@@ -1,5 +1,7 @@
 // this file has been generated
-// you can recreate it using generateSFSymbolEnum.swift script
+// you can recreate it using generateSFSymbolEnum.swift script --iteratable
+
+import SFSymbolEnum
 
 extension SFSymbol: CaseIterable {
     public static let allCases: [SFSymbol] = {
